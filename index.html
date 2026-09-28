@@ -252,14 +252,18 @@ canvas { width: 100%; height: 100%; display: block; }
   #camWrap canvas { position: absolute; inset: 0; }
   .cam-fallback {
     position: absolute;
-    top: 10px; right: 12px;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 3;
-    font-size: 10px;
-    letter-spacing: 1.5px;
-    color: #ffce7a;
-    border: 1px solid #6b5a2b;
-    padding: 4px 10px;
-    background: rgba(11, 18, 32, 0.85);
+    font-size: 11px;
+    letter-spacing: 1.2px;
+    color: #ffd9ae;
+    border: 1px solid #b07a2b;
+    padding: 7px 16px;
+    background: rgba(34, 22, 6, 0.9);
+    max-width: 88%;
+    text-align: center;
   }
 </style>
 </head>
@@ -1082,7 +1086,7 @@ connectPython();
 // Shows the camera feed (or a simulated feed) with the Wi-Fi symbol drawn at
 // the estimated transmitter bearing, plus an animated signal path back to
 // Device A and a fading trail of every bearing the signal has taken.
-const camState = { active: false, stream: null, trail: [] };
+const camState = { active: false, stream: null, reason: null, trail: [] };
 
 async function toggleCamera() {
   const wrap = $('camWrap');
@@ -1106,22 +1110,70 @@ async function toggleCamera() {
   camState.trail = [];
   btn.classList.add('primary');
   logLine('Camera overlay active — Wi-Fi symbol and signal path are drawn from the live estimate (bearing, RSSI, distance).');
-  try {
-    camState.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    $('camVideo').srcObject = camState.stream;
+  const got = await startCamera();
+  if (got.stream) {
+    camState.stream = got.stream;
+    camState.reason = null;
+    const v = $('camVideo');
+    v.srcObject = got.stream;
+    try { await v.play(); } catch (e) { /* some browsers need another gesture */ }
     $('camFallback').hidden = true;
-  } catch (e) {
+    logLine('Camera connected — live feed with the Wi-Fi signal-path overlay.');
+  } else {
     camState.stream = null;
+    camState.reason = got.reason;
     $('camFallback').hidden = false;
-    logLine('No camera available (denied or unsupported) — showing a simulated feed under the overlay.');
+    $('camFallback').textContent = 'NO CAMERA: ' + got.reason.toUpperCase();
+    logLine('Camera unavailable — ' + got.reason +
+            '. A clearly-labelled simulated feed is shown instead; the overlay still tracks the estimate.');
   }
 }
 
+async function startCamera() {
+  const md = navigator.mediaDevices;
+  if (!md || !md.getUserMedia) {
+    return { reason: 'camera API unavailable — needs HTTPS or localhost (opening via file:// can block it)' };
+  }
+  const attempts = [
+    { video: { facingMode: 'environment' }, audio: false },
+    { video: true, audio: false },
+  ];
+  let lastErr = null;
+  for (const c of attempts) {
+    try {
+      return { stream: await md.getUserMedia(c) };
+    } catch (e) { lastErr = e; }
+  }
+  let why = (lastErr && lastErr.name) || 'unknown error';
+  if (lastErr) {
+    if (lastErr.name === 'NotAllowedError' || lastErr.name === 'SecurityError') {
+      why = 'permission denied — allow the camera via the icon in the address bar, then reopen Camera';
+    } else if (lastErr.name === 'NotFoundError' || lastErr.name === 'OverconstrainedError') {
+      why = 'no camera found on this device';
+    } else if (lastErr.name === 'NotReadableError') {
+      why = 'camera busy (another app is using it)';
+    } else if (lastErr.message) {
+      why += ': ' + lastErr.message;
+    }
+  }
+  if (window.self !== window.top) {
+    why += ' (page is inside a preview frame — open it in its own tab)';
+  }
+  return { reason: why };
+}
+
 function drawSimFeed(ctx, w, h, time) {
-  ctx.fillStyle = '#060a12';
+  // deliberately bright and clearly labelled so it can never look like a black screen
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#12203c');
+  g.addColorStop(0.42, '#0c1830');
+  g.addColorStop(1, '#14254a');
+  ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   const hz = h * 0.42;
-  ctx.strokeStyle = 'rgba(76, 215, 255, 0.10)';
+  ctx.fillStyle = 'rgba(76, 215, 255, 0.20)';
+  ctx.fillRect(0, hz - 2, w, 4);
+  ctx.strokeStyle = 'rgba(76, 215, 255, 0.22)';
   ctx.lineWidth = 1;
   for (let i = -8; i <= 8; i++) {
     ctx.beginPath();
@@ -1136,9 +1188,20 @@ function drawSimFeed(ctx, w, h, time) {
     ctx.lineTo(w, yy);
     ctx.stroke();
   }
-  const sc = (time / 22) % h;
-  ctx.fillStyle = 'rgba(255, 159, 67, 0.06)';
-  ctx.fillRect(0, sc - 14, w, 28);
+  const sc = (time / 18) % h;
+  ctx.fillStyle = 'rgba(255, 159, 67, 0.12)';
+  ctx.fillRect(0, sc - 18, w, 36);
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(-0.06);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 22px monospace';
+  ctx.fillStyle = 'rgba(255, 206, 122, 0.9)';
+  ctx.fillText('SIMULATED FEED', 0, -8);
+  ctx.font = '12px monospace';
+  ctx.fillStyle = 'rgba(160, 180, 210, 0.95)';
+  ctx.fillText('camera not available — signal-path overlay still live', 0, 16);
+  ctx.restore();
 }
 
 function drawCamOverlay(time) {
@@ -1161,6 +1224,11 @@ function drawCamOverlay(time) {
   ctx.fillStyle = '#ffce7a';
   ctx.textAlign = 'left';
   ctx.fillText('WI-FI SIGNAL PATH // ' + (camState.stream ? 'CAMERA' : 'SIM FEED'), m + 8, m + 18);
+  if (!camState.stream) {
+    ctx.fillStyle = '#ff6b6b';
+    ctx.font = '10px monospace';
+    ctx.fillText((camState.reason || 'no camera').toUpperCase(), m + 8, m + 32);
+  }
 
   const step = state.current >= 0 ? state.steps[state.current] : null;
   if (!step || !step.estimate) return;
