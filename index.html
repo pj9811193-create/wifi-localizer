@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wi-Fi RSSI Localization — Live Map</title>
+<style>
+/* Wi-Fi RSSI Localization — live map UI (offline, no host) */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0b1220;
+  --panel: #111a2e;
+  --panel-2: #0e1626;
+  --line: #22304d;
+  --text: #dbe6f5;
+  --muted: #7d8fb0;
+  --accent: #ff9f43;
+  --accent-soft: rgba(255, 159, 67, 0.16);
+  --cyan: #4cd7ff;
+  --green: #3ddc84;
+  --grid: #16233c;
+  --grid-strong: #1f2f4f;
+}
+
+html, body { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.brand { display: flex; align-items: center; gap: 12px; }
+
+.logo {
+  font-size: 26px;
+  color: var(--accent);
+  width: 46px; height: 46px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.brand h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.3px; }
+.brand p  { font-size: 12px; color: var(--muted); }
+
+.controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #3a4f76;
+  color: #9fb6da;
+  background: rgba(76, 215, 255, 0.06);
+}
+.badage { }
+.badge.sim   { border-color: #2b6c5a; color: #6fe0a8; background: rgba(61, 220, 132, 0.08); }
+.badge.file  { border-color: #6b5a2b; color: #ffce7a; background: rgba(255, 159, 67, 0.08); }
+
+.btn {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 9px 16px;
+  border-radius: 9px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.btn:hover { border-color: #3a4f76; background: #16223a; }
+.btn.primary { border-color: #7a5a2b; color: #ffc26b; background: rgba(255, 159, 67, 0.10); }
+.btn.primary:hover { background: rgba(255, 159, 67, 0.18); }
+
+/* ---------- layout ---------- */
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 14px;
+  padding: 14px 20px;
+  min-height: 0;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 12px 16px 8px;
+}
+.panel-head h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+.sub { font-size: 11px; color: var(--muted); }
+
+.canvas-wrap { flex: 1; min-height: 0; padding: 0 10px 10px; }
+canvas { width: 100%; height: 100%; display: block; }
+
+/* ---------- legend ---------- */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 8px 16px 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.sw.est  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.sw.err  { background: transparent; border: 2px solid var(--accent); }
+.sw.true { background: var(--green); }
+.sw.scan { background: var(--cyan); }
+.sw.cal  { background: #5a6b8c; border-radius: 2px; }
+.sw.ringc { background: transparent; border: 1.5px dashed #46608f; border-radius: 50%; }
+
+/* ---------- sidebar ---------- */
+.sidebar { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 8px;
+  padding: 4px 16px 12px;
+}
+.stat {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.stat label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat span  { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.conf-row { display: flex; align-items: center; gap: 10px; padding: 0 16px 14px; }
+.conf-row > label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); white-space: nowrap; }
+.confbar { flex: 1; height: 8px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+#confFill { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, #e05252, #ff9f43, #3ddc84); transition: width 0.3s; }
+#confVal { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 42px; text-align: right; }
+
+.chart-panel { flex: 0 0 190px; }
+.log-panel { flex: 1; min-height: 120px; }
+
+.log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 16px 12px;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.75;
+  color: #93a7c9;
+}
+.log .hint { color: var(--muted); font-family: inherit; }
+.log .ts { color: #5d7295; }
+.log .ok { color: #6fe0a8; }
+.log .warn { color: #ffc26b; }
+.log b { color: #c3d4ee; }
+
+/* ---------- play bar ---------- */
+.playbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+#timeline { flex: 1; accent-color: var(--accent); cursor: pointer; }
+#timeLabel { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 150px; text-align: right; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 980px) {
+  main { grid-template-columns: 1fr; }
+  .map-panel { min-height: 420px; }
+  .chart-panel { flex: 0 0 170px; }
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+}
+
+  
+  /* ============ v3: ANGULAR HUD + CAMERA ============ */
+  .panel, .btn, .stat, .badge, .confbar, .logo { border-radius: 0; }
+
+  .panel {
+    clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%,
+                       16px 100%, 0 calc(100% - 16px));
+  }
+  .btn {
+    clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px),
+                       calc(100% - 7px) 100%, 0 100%, 0 7px);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-size: 12px;
+  }
+  .stat {
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px),
+                       calc(100% - 6px) 100%, 0 100%, 0 6px);
+  }
+  .logo {
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px),
+                       calc(100% - 10px) 100%, 0 100%);
+  }
+  .topbar { position: relative; overflow: hidden; }
+  .topbar::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 260px;
+    background: linear-gradient(105deg, transparent 0 55%, rgba(255, 159, 67, 0.07) 55%);
+    pointer-events: none;
+  }
+  .stat.acc { border-color: #2b6c5a; background: rgba(61, 220, 132, 0.07); grid-column: 1 / -1; }
+  .stat.acc span { color: #6fe0a8; }
+
+  #camWrap { position: relative; background: #05080f; }
+  #camWrap video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  #camWrap canvas { position: absolute; inset: 0; }
+  .cam-fallback {
+    position: absolute;
+    top: 10px; right: 12px;
+    z-index: 3;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: #ffce7a;
+    border: 1px solid #6b5a2b;
+    padding: 4px 10px;
+    background: rgba(11, 18, 32, 0.85);
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◎</span>
+    <div>
+      <h1>Wi-Fi RSSI Localization</h1>
+      <p>Device A (scanner) &rarr; Device B (Wi-Fi target / transmitter)</p>
+    </div>
+  </div>
+  <div class="controls">
+    <span id="statusBadge" class="badge offline">OFFLINE &middot; NO HOST</span>
+    <button id="btnLive" class="btn primary" disabled title="Start the engine with: python wifi_localizer.py serve">Live track (Python)</button>
+    <button id="btnDemo" class="btn">Run JS demo</button>
+    <button id="btnLoad" class="btn">Load Python session</button>
+    <button id="btnCam" class="btn" title="Camera view with Wi-Fi signal-path overlay">Camera</button>
+    <input type="file" id="fileInput" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<main>
+  <section class="panel map-panel">
+    <div class="panel-head">
+      <h2>Live map</h2>
+      <span id="mapScale" class="sub">20 m &times; 15 m floor</span>
+    </div>
+    <div class="canvas-wrap" id="mapWrap"><canvas id="mapCanvas"></canvas></div>
+    <div class="canvas-wrap" id="camWrap" hidden>
+      <video id="camVideo" autoplay playsinline muted></video>
+      <canvas id="camCanvas"></canvas>
+      <div id="camFallback" class="cam-fallback" hidden>CAMERA UNAVAILABLE — SIMULATED FEED</div>
+    </div>
+    <div class="legend">
+      <span><i class="sw est"></i> Estimated position</span>
+      <span><i class="sw err"></i> Error region</span>
+      <span><i class="sw true"></i> True target</span>
+      <span><i class="sw scan"></i> Scanner position</span>
+      <span><i class="sw cal"></i> Calibration grid</span>
+      <span><i class="sw ringc"></i> Path-loss ring</span>
+    </div>
+  </section>
+
+  <aside class="sidebar">
+    <div class="panel stats-panel">
+      <div class="panel-head"><h2>Position estimator</h2></div>
+      <div class="stat-grid">
+        <div class="stat"><label>X</label><span id="statX">&mdash;</span></div>
+        <div class="stat"><label>Y</label><span id="statY">&mdash;</span></div>
+        <div class="stat"><label>Error radius</label><span id="statErr">&mdash;</span></div>
+        <div class="stat"><label>Dist. error</label><span id="statDistErr">&mdash;</span></div>
+        <div class="stat"><label>RSSI (filtered)</label><span id="statRssi">&mdash;</span></div>
+        <div class="stat"><label>Channel</label><span id="statChannel">&mdash;</span></div>
+        <div class="stat"><label>Path-loss dist</label><span id="statPld">&mdash;</span></div>
+        <div class="stat"><label>Step</label><span id="statStep">&mdash;</span></div>
+        <div class="stat acc"><label>Indoor accuracy &middot; steady state &le; 2.5 m</label><span id="statAcc">&mdash;</span></div>
+      </div>
+      <div class="conf-row">
+        <label>Confidence</label>
+        <div class="confbar"><div id="confFill"></div></div>
+        <span id="confVal">&mdash;</span>
+      </div>
+    </div>
+
+    <div class="panel chart-panel">
+      <div class="panel-head">
+        <h2>Signal history</h2>
+        <span class="sub">raw vs filtered RSSI</span>
+      </div>
+      <div class="canvas-wrap"><canvas id="chartCanvas"></canvas></div>
+    </div>
+
+    <div class="panel log-panel">
+      <div class="panel-head"><h2>Event log</h2></div>
+      <div id="eventLog" class="log"><div class="hint">No data loaded. Click <b>Run JS demo</b> for a built-in simulation, or run <b>python wifi_localizer.py demo</b> and load <b>data/tracking_session.json</b> with <b>Load Python session</b>. Runs standalone from file://, or start the engine with <b>python wifi_localizer.py serve</b> and this page auto-connects for live tracking.</div></div>
+    </div>
+  </aside>
+</main>
+
+<footer class="playbar">
+  <button id="btnPlay" class="btn" title="Play / pause">▶</button>
+  <button id="btnStep" class="btn" title="Step forward">⏭</button>
+  <input type="range" id="timeline" min="0" max="0" value="0" step="1">
+  <span id="timeLabel">t = &mdash;</span>
+</footer>
+
+<script>
+'use strict';
+/* Wi-Fi RSSI Localization — live map UI.
+ * Completely offline (file://). Two data sources:
+ *   1. "Run JS demo"  — the whole pipeline re-implemented in JS, animated live.
+ *   2. "Load Python session" — a tracking_session.json stored by
+ *      wifi_localizer.py (which only WRITES files; no host/server ever
+ *      connects the Python program to this page).
+ */
+
+// ---------------------------------------------------------------- state ---
+const state = {
+  steps: [],
+  meta: null,
+  current: -1,
+  playing: false,
+  timer: null,
+  source: 'idle',
+};
+
+// ------------------------------------------------------------------ dom ---
+const $ = (id) => document.getElementById(id);
+const mapCanvas = $('mapCanvas');
+const chartCanvas = $('chartCanvas');
+const statusBadge = $('statusBadge');
+const timeline = $('timeline');
+
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const w = Math.max(50, rect.width - 0);
+  const h = Math.max(50, rect.height - 0);
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w, h };
+}
+
+const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+const r2 = (v) => Math.round(v * 100) / 100;
+const r1 = (v) => Math.round(v * 10) / 10;
+
+// ============================================================ MAP DRAW ====
+function mapTransform(w, h) {
+  const floor = (state.meta && state.meta.floor) || { width: 20, height: 15 };
+  const pad = 34;
+  const sx = (w - 2 * pad) / floor.width;
+  const sy = (h - 2 * pad) / floor.height;
+  const s = Math.min(sx, sy);
+  const ox = (w - s * floor.width) / 2;
+  const oy = (h - s * floor.height) / 2;
+  return { s, ox, oy, floor, pad };
+}
+
+function drawMap(time) {
+  const { ctx, w, h } = setupCanvas(mapCanvas);
+  ctx.clearRect(0, 0, w, h);
+  if (!state.meta) {
+    ctx.fillStyle = '#7d8fb0';
+    ctx.font = '14px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data loaded — run the JS demo or load a Python session file.', w / 2, h / 2);
+    return;
+  }
+  const { s, ox, oy, floor } = mapTransform(w, h);
+  const X = (mx) => ox + mx * s;
+  const Y = (my) => h - oy - my * s;
+
+  // floor background
+  ctx.fillStyle = '#0d1524';
+  ctx.fillRect(X(0), Y(floor.height), floor.width * s, floor.height * s);
+  ctx.strokeStyle = '#2a3c60';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(X(0), Y(floor.height), floor.width * s, floor.height * s);
+
+  // 1 m grid + labels every 5 m
+  ctx.lineWidth = 1;
+  for (let gx = 0; gx <= floor.width; gx++) {
+    ctx.strokeStyle = gx % 5 === 0 ? '#22355c' : '#15233c';
+    ctx.beginPath(); ctx.moveTo(X(gx), Y(0)); ctx.lineTo(X(gx), Y(floor.height)); ctx.stroke();
+    if (gx % 5 === 0) {
+      ctx.fillStyle = '#54688c'; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(gx + ' m', X(gx), Y(0) + 14);
+    }
+  }
+  for (let gy = 0; gy <= floor.height; gy++) {
+    ctx.strokeStyle = gy % 5 === 0 ? '#22355c' : '#15233c';
+    ctx.beginPath(); ctx.moveTo(X(0), Y(gy)); ctx.lineTo(X(floor.width), Y(gy)); ctx.stroke();
+    if (gy % 5 === 0) {
+      ctx.fillStyle = '#54688c'; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText(gy + ' m', X(0) - 6, Y(gy) + 3);
+    }
+  }
+
+  // calibration grid points
+  const calPos = state.meta.calibration_positions || [];
+  ctx.fillStyle = '#5a6b8c';
+  for (const p of calPos) {
+    ctx.fillRect(X(p.x) - 3, Y(p.y) - 3, 6, 6);
+  }
+
+  const steps = state.steps;
+  const cur = state.current >= 0 ? steps[state.current] : null;
+  if (!cur) return;
+
+  // current path-loss ring
+  ctx.save();
+  ctx.strokeStyle = 'rgba(70, 96, 143, 0.55)';
+  ctx.setLineDash([4, 4]);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(X(cur.scanner.x), Y(cur.scanner.y), cur.pathloss_distance * s, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // scanner walk path
+  ctx.save();
+  ctx.strokeStyle = 'rgba(76, 215, 255, 0.35)';
+  ctx.setLineDash([6, 5]);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= state.current; i++) {
+    const p = steps[i].scanner;
+    if (i === 0) ctx.moveTo(X(p.x), Y(p.y)); else ctx.lineTo(X(p.x), Y(p.y));
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // scan points (Device A reference positions)
+  const scanPts = state.meta.scan_points || [];
+  scanPts.forEach((p, i) => {
+    ctx.fillStyle = '#4cd7ff';
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3f6f8a'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('S' + i, X(p.x), Y(p.y) - 8);
+  });
+
+  // fingerprint candidates for current step
+  if (cur.fingerprint && cur.fingerprint.candidates) {
+    ctx.strokeStyle = 'rgba(255, 206, 122, 0.5)';
+    ctx.lineWidth = 1;
+    for (const p of cur.fingerprint.candidates) {
+      const px = X(p.x), py = Y(p.y);
+      ctx.beginPath();
+      ctx.moveTo(px - 4, py - 4); ctx.lineTo(px + 4, py + 4);
+      ctx.moveTo(px + 4, py - 4); ctx.lineTo(px - 4, py + 4);
+      ctx.stroke();
+    }
+  }
+
+  // estimate history
+  ctx.strokeStyle = 'rgba(255, 159, 67, 0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= state.current; i++) {
+    const e = steps[i].estimate;
+    if (i === 0) ctx.moveTo(X(e.x), Y(e.y)); else ctx.lineTo(X(e.x), Y(e.y));
+  }
+  ctx.stroke();
+
+  const est = cur.estimate;
+  // error region
+  const pulse = state.playing ? 1 + 0.12 * Math.sin(time / 220) : 1;
+  ctx.fillStyle = 'rgba(255, 159, 67, 0.13)';
+  ctx.strokeStyle = 'rgba(255, 159, 67, 0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(X(est.x), Y(est.y), est.error_radius * s * pulse, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+
+  // estimated position marker
+  ctx.shadowColor = '#ff9f43'; ctx.shadowBlur = 14;
+  ctx.fillStyle = '#ff9f43';
+  ctx.beginPath(); ctx.arc(X(est.x), Y(est.y), 6, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ffd9ae'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText('EST  ' + est.x.toFixed(1) + ', ' + est.y.toFixed(1) + ' m',
+              X(est.x) + 10, Y(est.y) - 8);
+
+  // true transmitter position
+  const truth = cur.true_position || (state.meta && state.meta.transmitter_true);
+  if (truth) {
+    const tx = X(truth.x), ty = Y(truth.y);
+    ctx.strokeStyle = '#3ddc84'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(tx - 8, ty); ctx.lineTo(tx + 8, ty);
+    ctx.moveTo(tx, ty - 8); ctx.lineTo(tx, ty + 8);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(tx, ty, 3, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#3ddc84'; ctx.font = '11px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('TRUE', tx + 11, ty + 4);
+  }
+
+  // current scanner position
+  ctx.fillStyle = '#4cd7ff';
+  ctx.beginPath();
+  ctx.arc(X(cur.scanner.x), Y(cur.scanner.y), 5.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#0b1220'; ctx.lineWidth = 2; ctx.stroke();
+}
+
+// ========================================================== CHART DRAW ====
+function drawChart() {
+  const { ctx, w, h } = setupCanvas(chartCanvas);
+  ctx.clearRect(0, 0, w, h);
+  const steps = state.steps;
+  if (!steps.length) return;
+
+  const padL = 38, padR = 10, padT = 10, padB = 20;
+  let lo = Infinity, hi = -Infinity;
+  for (const st of steps) {
+    for (const v of st.raw_rssi) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    if (st.filtered_rssi < lo) lo = st.filtered_rssi;
+    if (st.filtered_rssi > hi) hi = st.filtered_rssi;
+  }
+  lo -= 3; hi += 3;
+  const n = steps.length;
+  const X = (i) => padL + (n === 1 ? 0.5 : i / (n - 1)) * (w - padL - padR);
+  const Y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (h - padT - padB);
+
+  // axes
+  ctx.strokeStyle = '#22304d'; ctx.fillStyle = '#54688c'; ctx.lineWidth = 1;
+  ctx.font = '9.5px system-ui';
+  for (let g = 0; g <= 4; g++) {
+    const v = lo + (g / 4) * (hi - lo);
+    ctx.beginPath(); ctx.moveTo(padL, Y(v)); ctx.lineTo(w - padR, Y(v)); ctx.stroke();
+    ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(0), padL - 5, Y(v) + 3);
+  }
+
+  // raw samples (scatter)
+  ctx.fillStyle = 'rgba(125, 143, 176, 0.45)';
+  steps.forEach((st, i) => {
+    st.raw_rssi.forEach((v) => {
+      ctx.beginPath(); ctx.arc(X(i), Y(v), 1.6, 0, Math.PI * 2); ctx.fill();
+    });
+  });
+
+  // filtered RSSI line
+  ctx.strokeStyle = '#ff9f43'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  steps.forEach((st, i) => { if (i === 0) ctx.moveTo(X(i), Y(st.filtered_rssi)); else ctx.lineTo(X(i), Y(st.filtered_rssi)); });
+  ctx.stroke();
+
+  // current-step marker
+  if (state.current >= 0) {
+    const cx = X(state.current);
+    ctx.strokeStyle = 'rgba(76, 215, 255, 0.8)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cx, padT); ctx.lineTo(cx, h - padB); ctx.stroke();
+  }
+  ctx.fillStyle = '#54688c'; ctx.textAlign = 'left';
+  ctx.fillText('dBm', 4, padT + 4);
+}
+
+// ==================================================== UI / PLAYBACK ========
+function setStatus(kind, text) {
+  statusBadge.className = 'badge ' + kind;
+  statusBadge.textContent = text;
+}
+
+function buildLog(upTo) {
+  const log = $('eventLog');
+  const entries = [];
+  for (let i = 0; i <= upTo && i < state.steps.length; i++) {
+    const s = state.steps[i];
+    const fp = s.fingerprint;
+    entries.push(
+      '<span class="ts">[t=' + s.t.toFixed(1) + 's]</span> scan <b>S' + s.anchor +
+      '</b> ch' + (s.channel || '?') +
+      ' · RSSI raw ' + Math.min(...s.raw_rssi).toFixed(0) + '…' + Math.max(...s.raw_rssi).toFixed(0) +
+      ' dBm → filtered <b>' + s.filtered_rssi.toFixed(1) + ' dBm</b>' +
+      ' · ring ' + s.pathloss_distance.toFixed(1) + ' m' +
+      (fp ? ' · fingerprint rms ' + fp.rms.toFixed(1) + ' dB' : '') +
+      ' · est <span class="ok">(' + s.estimate.x.toFixed(1) + ', ' + s.estimate.y.toFixed(1) +
+      ')</span> ± ' + s.estimate.error_radius.toFixed(1) + ' m' +
+      (s.distance_error !== undefined ? ' · <span class="warn">err ' + s.distance_error.toFixed(1) + ' m</span>' : '')
+    );
+  }
+  log.innerHTML = entries.slice(-120).map((e) => '<div>' + e + '</div>').join('');
+  log.scrollTop = log.scrollHeight;
+}
+
+function setStep(i, keepLog) {
+  if (!state.steps.length) return;
+  state.current = Math.max(0, Math.min(i, state.steps.length - 1));
+  const s = state.steps[state.current];
+  const e = s.estimate;
+  $('statX').textContent = e.x.toFixed(2) + ' m';
+  $('statY').textContent = e.y.toFixed(2) + ' m';
+  $('statErr').textContent = '±' + e.error_radius.toFixed(2) + ' m';
+  $('statDistErr').textContent = s.distance_error !== undefined ? s.distance_error.toFixed(2) + ' m' : '—';
+  $('statRssi').textContent = s.filtered_rssi.toFixed(1) + ' dBm';
+  $('statChannel').textContent = s.channel || '—';
+  $('statPld').textContent = s.pathloss_distance.toFixed(1) + ' m';
+  $('statStep').textContent = (state.current + 1) + ' / ' + state.steps.length;
+  // steady-state indoor accuracy: steps after the first full sweep, within 2.5 m
+  const warm = state.meta && state.meta.scan_points ? state.meta.scan_points.length : 4;
+  let accOk = 0, accTot = 0;
+  for (let i = warm; i <= state.current; i++) {
+    const de = state.steps[i].distance_error;
+    if (de !== undefined) { accTot++; if (de <= 2.5) accOk++; }
+  }
+  $('statAcc').textContent = accTot
+    ? Math.round(100 * accOk / accTot) + '% of steady-state estimates'
+    : '—';
+  $('confFill').style.width = (e.confidence * 100).toFixed(0) + '%';
+  $('confVal').textContent = (e.confidence * 100).toFixed(0) + '%';
+  timeline.value = state.current;
+  $('timeLabel').textContent = 't = ' + s.t.toFixed(1) + ' s · step ' + (state.current + 1) + '/' + state.steps.length;
+  if (!keepLog) buildLog(state.current);
+  drawChart();
+}
+
+function play() {
+  if (!state.steps.length) return;
+  if (state.current >= state.steps.length - 1) setStep(0, false);
+  state.playing = true;
+  $('btnPlay').textContent = '❚❚';
+  state.timer = setInterval(() => {
+    if (state.current >= state.steps.length - 1) { stop(); return; }
+    setStep(state.current + 1, true);
+    buildLog(state.current);
+  }, 700);
+}
+
+function stop() {
+  state.playing = false;
+  if (state.timer) clearInterval(state.timer);
+  $('btnPlay').textContent = '▶';
+}
+
+function loadSession(session, source) {
+  if (!session || !Array.isArray(session.steps) || !session.steps.length || !session.meta) {
+    alert('Invalid session file: expected a tracking_session.json stored by wifi_localizer.py.');
+    return;
+  }
+  stop();
+  state.meta = session.meta;
+  state.steps = session.steps;
+  state.source = source;
+  timeline.max = state.steps.length - 1;
+  const floor = state.meta.floor || { width: 20, height: 15 };
+  $('mapScale').textContent = floor.width + ' m × ' + floor.height + ' m floor';
+  if (source === 'python') {
+    setStatus('file', pyOK ? 'PYTHON SESSION · CONNECTED' : 'PYTHON SESSION · OFFLINE');
+    logLine('Loaded <b>' + state.steps.length + '</b> steps from Python session file (stored by wifi_localizer.py — no host involved).');
+  } else {
+    setStatus('sim', 'JS SIMULATION · OFFLINE');
+    logLine('Built-in JS demo generated <b>' + state.steps.length + '</b> steps (same pipeline: median+EMA filter → fingerprint kNN → path-loss rings → Kalman → confidence).');
+  }
+  setStep(0, false);
+  play();
+}
+
+function logLine(html) {
+  const log = $('eventLog');
+  if (log.querySelector('.hint')) log.innerHTML = '';
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ============================ JS DEMO (mirrors wifi_localizer.py) =========
+const FLOOR = { width: 20, height: 15 };
+const SCAN_POINTS = [
+  { x: 2.0, y: 2.0 }, { x: 10.0, y: 1.8 }, { x: 18.0, y: 2.0 }, { x: 18.2, y: 7.5 },
+  { x: 18.0, y: 13.0 }, { x: 10.0, y: 13.2 }, { x: 2.0, y: 13.0 }, { x: 1.8, y: 7.5 },
+  { x: 10.0, y: 7.5 }, { x: 5.0, y: 7.5 },
+];
+const GRID_X = [3.0, 6.5, 10.0, 13.5, 17.0];
+const GRID_Y = [3.5, 6.0, 8.5, 11.0];
+const TRUE_TX = { x: 13.2, y: 9.0 };
+const PROP = { a: -32.0, n: 2.6 };
+const rssiAt = (d) => PROP.a - 10 * PROP.n * Math.log10(Math.max(d, 0.5));
+const distFrom = (r) => Math.pow(10, (PROP.a - r) / (10 * PROP.n));
+
+function gauss(sigma) {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) * sigma;
+}
+
+// Layer 1 — median + EMA + outlier rejection
+class EmaFilter {
+  constructor(window = 7, alpha = 0.35, z = 3.0) {
+    this.window = window; this.alpha = alpha; this.z = z;
+    this.buf = []; this.ema = null;
+  }
+  step(v) {
+    this.buf.push(v);
+    if (this.buf.length > this.window) this.buf.shift();
+    const sorted = [...this.buf].sort((a, b) => a - b);
+    const med = sorted[Math.floor(sorted.length / 2)];
+    if (this.ema === null) { this.ema = med; return this.ema; }
+    const mads = this.buf.map((x) => Math.abs(x - med)).sort((a, b) => a - b);
+    const mad = mads[Math.floor(mads.length / 2)];
+    const sigma = 1.4826 * mad;
+    if (sigma > 1e-6 && Math.abs(med - this.ema) > this.z * sigma) {
+      this.ema += 0.05 * (med - this.ema);
+    } else {
+      this.ema = this.alpha * med + (1 - this.alpha) * this.ema;
+    }
+    return this.ema;
+  }
+}
+
+// Layer 3 — Kalman (2-D constant velocity), small dense matrix helpers
+function matMul(A, B) {
+  const C = Array.from({ length: A.length }, () => new Array(B[0].length).fill(0));
+  for (let i = 0; i < A.length; i++)
+    for (let k = 0; k < B.length; k++)
+      for (let j = 0; j < B[0].length; j++) C[i][j] += A[i][k] * B[k][j];
+  return C;
+}
+const matVec = (A, v) => A.map((row) => row.reduce((s, a, i) => s + a * v[i], 0));
+const transpose = (A) => A[0].map((_, j) => A.map((row) => row[j]));
+
+class Kalman2D {
+  constructor(dt = 1, q = 0.03, r = 1.0) {
+    this.dt = dt; this.q = q; this.r = r;
+    this.x = [0, 0, 0, 0];
+    this.P = [[25, 0, 0, 0], [0, 25, 0, 0], [0, 0, 9, 0], [0, 0, 0, 9]];
+  }
+  update(zx, zy) {
+    const dt = this.dt;
+    const F = [[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]];
+    this.x = matVec(F, this.x);
+    this.P = matMul(matMul(F, this.P), transpose(F));
+    this.P[0][0] += this.q * dt * dt; this.P[1][1] += this.q * dt * dt;
+    this.P[2][2] += this.q; this.P[3][3] += this.q;
+
+    const H = [[1, 0, 0, 0], [0, 1, 0, 0]];
+    const PHt = matMul(this.P, transpose(H));       // 4x2
+    const S = matMul(H, PHt);                       // 2x2
+    S[0][0] += this.r; S[1][1] += this.r;
+    const det = S[0][0] * S[1][1] - S[0][1] * S[1][0];
+    const Sinv = [[S[1][1] / det, -S[0][1] / det], [-S[1][0] / det, S[0][0] / det]];
+    const K = matMul(PHt, Sinv);                    // 4x2
+    const y = [zx - this.x[0], zy - this.x[1]];
+    const Ky = matVec(K, y);
+    this.x = this.x.map((v, i) => v + Ky[i]);
+    const I4 = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]];
+    const KH = matMul(K, H);
+    const IKH = I4.map((row, i) => row.map((v, j) => v - KH[i][j]));
+    this.P = matMul(IKH, this.P);
+    return Math.hypot(y[0], y[1]);
+  }
+  sigma() { return Math.sqrt(this.P[0][0] + this.P[1][1]); }
+}
+
+// fingerprint kNN over the partial observed vector
+function fpMatch(db, observed, k) {
+  const idxs = Object.keys(observed).map(Number).sort((a, b) => a - b);
+  if (!db.entries.length || !idxs.length) return null;
+  const need = Math.max(...idxs) + 1;
+  const scored = [];
+  for (const e of db.entries) {
+    if (e.vector.length < need) continue;
+    let se = 0;
+    for (const i of idxs) se += (observed[i] - e.vector[i]) ** 2;
+    scored.push({ rms: Math.sqrt(se / idxs.length), pos: e.position });
+  }
+  if (!scored.length) return null;
+  scored.sort((a, b) => a.rms - b.rms);
+  const top = scored.slice(0, k);
+  let wsum = 0, cx = 0, cy = 0;
+  for (const t of top) { const w = 1 / ((t.rms + 2) ** 2); wsum += w; cx += w * t.pos.x; cy += w * t.pos.y; }
+  cx /= wsum; cy /= wsum;
+  const spread = top.reduce((s, t) => s + dist(cx, cy, t.pos.x, t.pos.y), 0) / top.length;
+  return { x: r2(cx), y: r2(cy), spread: r2(spread), rms: r2(top[0].rms), candidates: top.map((t) => t.pos) };
+}
+
+// range-ring solver v3: Huber-robust, multi-start (mirrors Python)
+function solveRings(constraints, starts) {
+  const n = constraints.length;
+  const base = constraints.map((_, i) => Math.max(0.1, Math.pow(0.82, n - 1 - i)));
+  const ax = constraints.reduce((s, c) => s + c.x, 0) / n;
+  const ay = constraints.reduce((s, c) => s + c.y, 0) / n;
+  const s0 = constraints[0];
+  let dx = ax - s0.x, dy = ay - s0.y;
+  let norm = Math.hypot(dx, dy);
+  if (norm < 1e-6) { dx = 1; dy = 0; norm = 1; }
+  const pts = [...(starts || []).filter(Boolean),
+               [s0.x + s0.d * dx / norm, s0.y + s0.d * dy / norm],
+               [ax, ay]];
+  let best = null;
+  for (const [px0, py0] of pts) {
+    let px = px0, py = py0;
+    for (let it = 0; it < 120; it++) {
+      let gx = 0, gy = 0;
+      for (let i = 0; i < n; i++) {
+        const c = constraints[i];
+        let d = dist(px, py, c.x, c.y);
+        if (d < 0.25) d = 0.25;
+        const r = d - c.d;
+        const hw = Math.abs(r) <= 1.2 ? 1 : 1.2 / Math.abs(r);  // Huber
+        const g = 2 * base[i] * hw * r;
+        gx += g * (px - c.x) / d;
+        gy += g * (py - c.y) / d;
+      }
+      const gnorm = Math.hypot(gx, gy);
+      if (gnorm < 1e-9) break;
+      const step = Math.min(0.8, 0.6 * Math.pow(0.97, it));
+      px -= (step * gx) / gnorm;
+      py -= (step * gy) / gnorm;
+    }
+    let cost = 0;
+    for (let i = 0; i < n; i++) {
+      const c = constraints[i];
+      const r = Math.abs(dist(px, py, c.x, c.y) - c.d);
+      cost += base[i] * (r <= 1.2 ? r * r : 2 * 1.2 * r - 1.44);
+    }
+    if (!best || cost < best.cost) best = { cost, x: px, y: py };
+  }
+  let se = 0, wsum = 0;
+  for (let i = 0; i < n; i++) {
+    const c = constraints[i];
+    se += base[i] * (dist(best.x, best.y, c.x, c.y) - c.d) ** 2;
+    wsum += base[i];
+  }
+  return { x: r2(best.x), y: r2(best.y), residual: Math.sqrt(se / wsum) };
+}
+
+function confidence(residual, fpSpread, innovation, nCons, coverage) {
+  const cRing = Math.exp(-0.18 * Math.max(0, residual - 0.5));
+  const cFp = fpSpread == null ? 0.5 : Math.exp(-0.06 * Math.max(0, fpSpread - 1));
+  const cInn = Math.exp(-0.12 * Math.max(0, innovation - 1));
+  const cN = Math.min(1, nCons / 6);
+  const cCov = Math.min(1, coverage);
+  const c = 0.35 * cRing + 0.25 * cFp + 0.15 * cInn + 0.15 * cN + 0.10 * cCov;
+  return r2(Math.max(0.02, Math.min(0.99, c)));
+}
+
+function buildDemoSession() {
+  // calibration fingerprints (transmitter grid × scanner points)
+  const entries = [], calPositions = [];
+  for (const gx of GRID_X) for (const gy of GRID_Y) {
+    calPositions.push({ x: gx, y: gy });
+    entries.push({
+      position: { x: gx, y: gy },
+      vector: SCAN_POINTS.map((sp) => rssiAt(dist(gx, gy, sp.x, sp.y)) + gauss(1.2)),
+    });
+  }
+  const db = { scanPoints: SCAN_POINTS, entries };
+
+  // tracking walk: visit all scan points, then return
+  const order = [...SCAN_POINTS.keys(), ...[...SCAN_POINTS.keys()].reverse()];
+  const walk = [];
+  let t = 0;
+  for (const anchor of order) {
+    const sp = SCAN_POINTS[anchor];
+    const d = dist(TRUE_TX.x, TRUE_TX.y, sp.x, sp.y);
+    const samples = [];
+    for (let i = 0; i < 12; i++) {
+      let r = rssiAt(d) + gauss(3);
+      if (Math.random() < 0.12) r += (Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 7);
+      samples.push(r1(r));
+    }
+    walk.push({ t: r1(t), anchor, scanner: sp, samples, channel: [1, 6, 11][anchor % 3] });
+    t += 2;
+  }
+
+  // pipeline
+  const kal = new Kalman2D();
+  const observed = {}, constraints = [];
+  let lastFused = null;
+  const steps = walk.map((s) => {
+    const sf = new EmaFilter();
+    const filtered = s.samples.map((v) => sf.step(v));
+    const observedRssi = filtered.reduce((a, b) => a + b, 0) / filtered.length;
+    observed[s.anchor] = observedRssi;
+    const d = distFrom(observedRssi);
+    constraints.push({ x: s.scanner.x, y: s.scanner.y, d });
+    const fp = fpMatch(db, observed, 6);
+    const starts = [];
+    if (lastFused) starts.push([lastFused.x, lastFused.y]);
+    if (fp) starts.push([fp.x, fp.y]);
+    const rings = solveRings(constraints, starts);
+    lastFused = { x: rings.x, y: rings.y };
+    const innovation = kal.update(rings.x, rings.y);
+    const errRadius = Math.min(12, kal.sigma() + rings.residual);
+    const coverage = Object.keys(observed).length / SCAN_POINTS.length;
+    const conf = confidence(rings.residual, fp ? fp.spread : null, innovation, constraints.length, coverage);
+    return {
+      t: s.t, anchor: s.anchor, scanner: s.scanner, channel: s.channel,
+      raw_rssi: s.samples, filtered_series: filtered.map(r2), filtered_rssi: r2(observedRssi),
+      pathloss_distance: r2(d), fingerprint: fp,
+      fused_measurement: { x: rings.x, y: rings.y, residual_rms: r2(rings.residual) },
+      estimate: { x: r2(kal.x[0]), y: r2(kal.x[1]), error_radius: r2(errRadius), confidence: conf },
+      true_position: TRUE_TX,
+      distance_error: r2(dist(kal.x[0], kal.x[1], TRUE_TX.x, TRUE_TX.y)),
+    };
+  });
+
+  return {
+    meta: {
+      mode: 'js-demo', floor: FLOOR, transmitter_true: TRUE_TX,
+      scan_points: SCAN_POINTS, calibration_positions: calPositions,
+      generated: new Date().toISOString(),
+    },
+    steps,
+  };
+}
+
+// ================================================================ wire ====
+$('btnDemo').addEventListener('click', () => loadSession(buildDemoSession(), 'js'));
+$('btnLoad').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      loadSession(JSON.parse(reader.result), 'python');
+    } catch (err) {
+      alert('Could not parse the JSON file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  ev.target.value = '';
+});
+$('btnPlay').addEventListener('click', () => (state.playing ? stop() : play()));
+$('btnStep').addEventListener('click', () => { stop(); setStep(state.current + 1, false); });
+timeline.addEventListener('input', () => { stop(); setStep(Number(timeline.value), false); });
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') { stop(); setStep(state.current + 1, false); }
+  if (e.key === 'ArrowLeft') { stop(); setStep(state.current - 1, false); }
+  if (e.key === ' ') { e.preventDefault(); state.playing ? stop() : play(); }
+});
+window.addEventListener('resize', () => { drawChart(); });
+
+// continuous map animation (glow pulse while playing)
+function tick(time) {
+  drawMap(time);
+  if (camState.active) drawCamOverlay(time);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+drawChart();
+
+
+// =================== Python connection (wifi_localizer.py serve) ==========
+// Works two ways:
+//   1. the page is served BY the engine  -> same-origin, API_BASE = ''
+//   2. the page is opened from file://   -> cross-connects to 127.0.0.1:8765
+//      (the engine sends CORS headers, so this is allowed)
+const API_BASE = (location.protocol === 'http:' || location.protocol === 'https:')
+  ? '' : 'http://127.0.0.1:8765';
+let pyOK = false;
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+async function py(path, opts) {
+  const r = await fetch(API_BASE + path, opts);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function connectPython() {
+  try {
+    const st = await py('/api/status', { cache: 'no-store' });
+    if (st && st.connected) {
+      pyOK = true;
+      const btn = $('btnLive');
+      btn.disabled = false;
+      setStatus('sim', 'PYTHON CONNECTED');
+      logLine('Connected to <b>wifi_localizer.py</b>' +
+              (API_BASE ? ' at ' + API_BASE : ' (same origin)') +
+              ' — live tracking enabled.');
+      try {
+        const s = await py('/api/session', { cache: 'no-store' });
+        if (s && s.steps && s.steps.length) {
+          loadSession(s, 'python');
+          setStatus('sim', 'PYTHON CONNECTED');
+        }
+      } catch (e) { /* no stored session yet */ }
+      return;
+    }
+  } catch (e) { /* engine not running: stay offline */ }
+}
+
+async function liveTrack() {
+  if (!pyOK) return;
+  const btn = $('btnLive');
+  btn.disabled = true;
+  btn.textContent = 'Tracking…';
+  try {
+    // fresh hidden transmitter + fresh engine state, running in Python
+    const meta = await py('/api/reset', { method: 'POST' });
+    stop();
+    state.meta = meta;
+    state.steps = [];
+    state.source = 'python-live';
+    timeline.max = 0;
+    const floor = meta.floor || { width: 20, height: 15 };
+    $('mapScale').textContent = floor.width + ' m × ' + floor.height + ' m floor';
+    logLine('Live tracking started — every scan burst is processed by the Python engine '
+          + '(filter → fingerprint → path-loss rings → Kalman → confidence).');
+
+    // Device A walks the scan points and back; each burst goes to POST /api/scan
+    const pts = meta.scan_points || [];
+    const order = [...pts.keys(), ...[...pts.keys()].reverse()];
+    for (const anchor of order) {
+      const rec = await py('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anchor: anchor }),
+      });
+      state.steps.push(rec);
+      timeline.max = state.steps.length - 1;
+      setStep(state.steps.length - 1, false);
+      await sleep(550);
+    }
+    logLine('Live tracking finished — <b>' + state.steps.length +
+            '</b> measurements processed by Python.');
+  } catch (err) {
+    logLine('Live tracking failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Live track (Python)';
+  }
+}
+
+$('btnLive').addEventListener('click', liveTrack);
+connectPython();
+
+// ===================== CAMERA OVERLAY: Wi-Fi signal path ===================
+// Shows the camera feed (or a simulated feed) with the Wi-Fi symbol drawn at
+// the estimated transmitter bearing, plus an animated signal path back to
+// Device A and a fading trail of every bearing the signal has taken.
+const camState = { active: false, stream: null, trail: [] };
+
+async function toggleCamera() {
+  const wrap = $('camWrap');
+  const btn = $('btnCam');
+  if (camState.active) {
+    camState.active = false;
+    if (camState.stream) {
+      camState.stream.getTracks().forEach((t) => t.stop());
+      camState.stream = null;
+    }
+    $('camVideo').srcObject = null;
+    wrap.hidden = true;
+    $('mapWrap').style.display = '';
+    btn.classList.remove('primary');
+    logLine('Camera overlay closed.');
+    return;
+  }
+  wrap.hidden = false;
+  $('mapWrap').style.display = 'none';
+  camState.active = true;
+  camState.trail = [];
+  btn.classList.add('primary');
+  logLine('Camera overlay active — Wi-Fi symbol and signal path are drawn from the live estimate (bearing, RSSI, distance).');
+  try {
+    camState.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    $('camVideo').srcObject = camState.stream;
+    $('camFallback').hidden = true;
+  } catch (e) {
+    camState.stream = null;
+    $('camFallback').hidden = false;
+    logLine('No camera available (denied or unsupported) — showing a simulated feed under the overlay.');
+  }
+}
+
+function drawSimFeed(ctx, w, h, time) {
+  ctx.fillStyle = '#060a12';
+  ctx.fillRect(0, 0, w, h);
+  const hz = h * 0.42;
+  ctx.strokeStyle = 'rgba(76, 215, 255, 0.10)';
+  ctx.lineWidth = 1;
+  for (let i = -8; i <= 8; i++) {
+    ctx.beginPath();
+    ctx.moveTo(w / 2 + i * 18, h);
+    ctx.lineTo(w / 2 + i * 140, hz);
+    ctx.stroke();
+  }
+  for (let j = 0; j < 10; j++) {
+    const yy = hz + Math.pow(j / 10, 2.2) * (h - hz);
+    ctx.beginPath();
+    ctx.moveTo(0, yy);
+    ctx.lineTo(w, yy);
+    ctx.stroke();
+  }
+  const sc = (time / 22) % h;
+  ctx.fillStyle = 'rgba(255, 159, 67, 0.06)';
+  ctx.fillRect(0, sc - 14, w, 28);
+}
+
+function drawCamOverlay(time) {
+  const camC = $('camCanvas');
+  const { ctx, w, h } = setupCanvas(camC);
+  ctx.clearRect(0, 0, w, h);
+  if (!camState.stream) drawSimFeed(ctx, w, h, time);
+
+  // angular HUD frame
+  const m = 16, c = 26;
+  ctx.strokeStyle = 'rgba(255, 159, 67, 0.75)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(m + c, m); ctx.lineTo(m, m); ctx.lineTo(m, m + c);
+  ctx.moveTo(w - m - c, m); ctx.lineTo(w - m, m); ctx.lineTo(w - m, m + c);
+  ctx.moveTo(m, h - m - c); ctx.lineTo(m, h - m); ctx.lineTo(m + c, h - m);
+  ctx.moveTo(w - m - c, h - m); ctx.lineTo(w - m, h - m); ctx.lineTo(w - m, h - m - c);
+  ctx.stroke();
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#ffce7a';
+  ctx.textAlign = 'left';
+  ctx.fillText('WI-FI SIGNAL PATH // ' + (camState.stream ? 'CAMERA' : 'SIM FEED'), m + 8, m + 18);
+
+  const step = state.current >= 0 ? state.steps[state.current] : null;
+  if (!step || !step.estimate) return;
+
+  const est = step.estimate, sc = step.scanner;
+  const mapAng = Math.atan2(est.y - sc.y, est.x - sc.x);  // map angle (y up)
+  const dir = -mapAng;                                    // screen angle (y down)
+  const bearing = Math.round((90 - mapAng * 180 / Math.PI + 360) % 360);
+  const rssi = step.filtered_rssi;
+  const col = rssi > -55 ? '#3ddc84' : (rssi > -65 ? '#ff9f43' : '#ff6b6b');
+  const dev = { x: w / 2, y: h - 70 };
+
+  // fading trail of past bearings = the path the signal has taken
+  camState.trail.push({ a: dir, t: time });
+  if (camState.trail.length > 60) camState.trail.shift();
+  for (const p of camState.trail) {
+    const age = Math.min(1, (time - p.t) / 9000);
+    ctx.strokeStyle = 'rgba(76, 215, 255, ' + (0.20 * (1 - age)).toFixed(3) + ')';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(dev.x, dev.y);
+    ctx.lineTo(dev.x + Math.cos(p.a) * h * 0.62, dev.y + Math.sin(p.a) * h * 0.62);
+    ctx.stroke();
+  }
+
+  // animated signal path: dashed ray + travelling pulses toward the symbol
+  const symD = Math.min(w, h) * 0.30;
+  const sx = dev.x + Math.cos(dir) * symD;
+  const sy = dev.y + Math.sin(dir) * symD;
+  ctx.save();
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([12, 9]);
+  ctx.lineDashOffset = -((time / 28) % 21);
+  ctx.beginPath();
+  ctx.moveTo(dev.x, dev.y);
+  ctx.lineTo(sx, sy);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  for (let k = 0; k < 3; k++) {
+    const ph = ((time / 900) + k / 3) % 1;
+    ctx.globalAlpha = 0.9 - 0.5 * ph;
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(dev.x + (sx - dev.x) * ph, dev.y + (sy - dev.y) * ph, 3.5 - ph * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // pulsing Wi-Fi arcs at the transmitter bearing
+  const back = dir + Math.PI;  // arcs open toward the scanner
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.arc(0, 0, 3, 0, Math.PI * 2);
+  ctx.fill();
+  for (let k = 1; k <= 3; k++) {
+    const r = 6 + k * 7;
+    const a = Math.max(0.2, 0.45 + 0.3 * Math.sin(time / 300 + k));
+    ctx.strokeStyle = col;
+    ctx.globalAlpha = a;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, back - 0.7, back + 0.7);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // Device A marker: angular chevron
+  ctx.save();
+  ctx.translate(dev.x, dev.y);
+  ctx.strokeStyle = '#4cd7ff';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(-14, -8); ctx.lineTo(0, 6); ctx.lineTo(14, -8);
+  ctx.stroke();
+  ctx.strokeRect(-5, 6, 10, 6);
+  ctx.restore();
+
+  // HUD readouts
+  const info = [
+    'RSSI  ' + rssi.toFixed(1) + ' dBm',
+    'DIST  ' + Math.hypot(est.x - sc.x, est.y - sc.y).toFixed(1) + ' m',
+    'BRG   ' + bearing + '\u00B0',
+    'CONF  ' + (est.confidence * 100).toFixed(0) + '%',
+  ];
+  let ty = m + 42;
+  for (const s of info) {
+    ctx.fillStyle = 'rgba(11, 18, 32, 0.75)';
+    ctx.fillRect(m + 6, ty - 11, 138, 17);
+    ctx.fillStyle = col;
+    ctx.fillText(s, m + 12, ty);
+    ty += 22;
+  }
+}
+
+$('btnCam').addEventListener('click', toggleCamera);
+
+
+  </script>
+</body>
+</html>
